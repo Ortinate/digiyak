@@ -1,0 +1,10 @@
+-- V1: Base PostGIS extensions and isolated module schemas (Member 14 / Lead)
+CREATE EXTENSION IF NOT EXISTS postgis;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE SCHEMA IF NOT EXISTS identity;
+CREATE SCHEMA IF NOT EXISTS campus;
+CREATE SCHEMA IF NOT EXISTS delivery;
+CREATE SCHEMA IF NOT EXISTS dispatch;
+CREATE SCHEMA IF NOT EXISTS finance;
+CREATE SCHEMA IF NOT EXISTS modulith;

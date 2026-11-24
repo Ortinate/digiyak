@@ -1,0 +1,8 @@
+spring:
+  jpa:
+    show-sql: false
+
+logging:
+  level:
+    com.digiyak: DEBUG
+    org.springframework.modulith: INFO

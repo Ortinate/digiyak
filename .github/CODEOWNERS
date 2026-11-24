@@ -1,0 +1,72 @@
+# Digiyak 15-Member Ownership Map
+# Replace @member-N placeholders with actual GitHub usernames once teammates join the repo.
+
+# Member 1 — Platform Lead & Shared Kernel
+/backend/build.gradle.kts                                   @Ortinate
+/backend/settings.gradle.kts                                @Ortinate
+/backend/src/main/resources/application*.yml                @Ortinate
+/backend/src/main/java/com/digiyak/DigiyakApplication.java  @Ortinate
+/backend/src/main/java/com/digiyak/shared/                  @Ortinate
+
+# Member 2 — Identity & Auth Backend
+/backend/src/main/java/com/digiyak/identity/                @member-2 @Ortinate
+/backend/src/main/resources/db/migration/V2__*              @member-2 @Ortinate
+
+# Member 3 — Campus, PostGIS & Pricing Backend
+/backend/src/main/java/com/digiyak/campus/                  @member-3 @Ortinate
+/backend/src/main/resources/db/migration/V3__*              @member-3 @Ortinate
+
+# Member 4 — Delivery Requests & WhatsApp Pay Links Backend
+/backend/src/main/java/com/digiyak/delivery/                @member-4 @Ortinate
+/backend/src/main/resources/db/migration/V4__*              @member-4 @Ortinate
+
+# Member 5 — Dispatch & Runner Assignment Backend
+/backend/src/main/java/com/digiyak/dispatch/assignment/     @member-5 @Ortinate
+/backend/src/main/resources/db/migration/V5__*              @member-5 @Ortinate
+
+# Member 6 — Live Tracking, Redis GEO & SSE Backend
+/backend/src/main/java/com/digiyak/dispatch/realtime/       @member-6 @Ortinate
+
+# Member 7 — Finance Double-Entry Ledger & Cash Float Backend
+/backend/src/main/java/com/digiyak/finance/ledger/          @member-7 @Ortinate
+/backend/src/main/resources/db/migration/V6__*              @member-7 @Ortinate
+
+# Member 8 — MoMo Gateway & Payouts Backend
+/backend/src/main/java/com/digiyak/finance/gateway/         @member-8 @Ortinate
+
+# Member 9 — Frontend Core, PWA & Shared Campus Map
+/frontend/package.json                                      @member-9 @Ortinate
+/frontend/src/components/                                   @member-9 @Ortinate
+/frontend/src/lib/                                          @member-9 @Ortinate
+
+# Member 10 — Requester & Live Tracking UI
+/frontend/src/app/page.tsx                                  @member-10 @member-9
+/frontend/src/app/track/                                    @member-10 @member-9
+/frontend/src/features/request-delivery/                    @member-10 @member-9
+/frontend/src/features/live-tracking/                       @member-10 @member-9
+
+# Member 11 — Vendor Dispatch & WhatsApp Pay Links UI
+/frontend/src/app/vendor/                                   @member-11 @member-9
+/frontend/src/app/pay/                                      @member-11 @member-9
+/frontend/src/features/vendor-dispatch/                     @member-11 @member-9
+
+# Member 12 — Runner Gig Radar & Earnings UI
+/frontend/src/app/runner/                                   @member-12 @member-9
+/frontend/src/features/runner-console/                      @member-12 @member-9
+
+# Member 13 — Admin Campus Ops & Ledger Audit UI
+/frontend/src/app/admin/                                    @member-13 @member-9
+/frontend/src/features/admin-ops/                           @member-13 @member-9
+
+# Member 14 — DevOps, Docker, CI/CD & Base DB
+/docker-compose.yml                                         @member-14 @Ortinate
+/.env.example                                               @member-14 @Ortinate
+/infra/                                                     @member-14 @Ortinate
+/.github/                                                   @member-14 @Ortinate
+/backend/src/main/resources/db/migration/V1__*              @member-14 @Ortinate
+/backend/src/main/resources/db/migration/V7__*              @member-14 @Ortinate
+
+# Member 15 — QA, Automated Tests & Docs
+/backend/src/test/                                          @member-15 @Ortinate
+/frontend/tests/                                            @member-15 @member-9
+/docs/                                                      @member-15 @Ortinate

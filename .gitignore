@@ -1,0 +1,33 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Java / Gradle
+backend/.gradle/
+backend/build/
+backend/out/
+*.class
+*.jar
+*.war
+*.log
+hs_err_pid*
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/.vercel/
+frontend/next-env.d.ts
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+
+# IDEs & OS
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db

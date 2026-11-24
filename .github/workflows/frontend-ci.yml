@@ -1,0 +1,40 @@
+name: Frontend CI (Next.js PWA)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install & Build
+        run: |
+          if [ -s package.json ]; then
+            pnpm install --frozen-lockfile || pnpm install
+            pnpm run build
+          else
+            echo "Frontend package.json not initialized yet — skipping build."
+          fi

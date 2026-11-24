@@ -1,0 +1,10 @@
+{
+  "name": "Digiyak — Campus Walking Delivery",
+  "short_name": "Digiyak",
+  "description": "Campus-only walking delivery network for hostels and lecture halls.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#10b981",
+  "orientation": "portrait"
+}

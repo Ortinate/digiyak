@@ -1,0 +1,610 @@
+Project digiyak_delivery {
+  database_type: 'PostgreSQL'
+  Note: '''
+    Digiyak — Campus-Only Walking Delivery Network
+    Core: Java 25 + Spring Boot 4 + Spring Modulith 2 + PostgreSQL 17 (PostGIS) + Redis 7
+    Money values are stored in integer minor units (pesewas, 100 = GHS 1.00).
+    Supports 3 Payment Modes:
+      1. MOMO_PREPAID (Escrow -> 2-way split on Delivery PIN)
+      2. MOMO_PAY_AFTER_DELIVERY (MoMo prompt/link at handoff -> 2-way split)
+      3. PHYSICAL_CASH (Runner keeps 100% cash -> Digiyak debits 15% cut from Runner Wallet)
+    Live runner GPS coordinates live in Redis GEO; PostGIS enforces campus geofences & stores audit trails.
+  '''
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+Enum user_role {
+  CUSTOMER
+  VENDOR_PARTNER
+  RUNNER
+  ADMIN
+}
+
+Enum momo_provider {
+  MTN
+  TELECEL
+  AIRTELTIGO
+}
+
+Enum landmark_type {
+  HOSTEL
+  LECTURE_HALL
+  LIBRARY
+  FOOD_COURT
+  CAMPUS_GATE
+  LANDMARK
+}
+
+Enum delivery_source {
+  STUDENT_P2P
+  VENDOR_WALLET
+  VENDOR_PAY_LINK
+}
+
+Enum package_category {
+  PREPAID_FOOD
+  DOCUMENTS_BOOKS
+  ELECTRONICS_CHARGER
+  LAUNDRY
+  GATE_PARCEL
+  OTHER
+}
+
+Enum payment_method {
+  MOMO_PREPAID
+  MOMO_PAY_AFTER_DELIVERY
+  PHYSICAL_CASH
+  VENDOR_WALLET
+}
+
+Enum payment_timing {
+  PREPAID
+  PAY_AT_PICKUP
+  PAY_ON_DELIVERY
+}
+
+Enum cash_collection_status {
+  NOT_APPLICABLE
+  PENDING_COLLECTION
+  COLLECTED_BY_RUNNER
+  DISPUTED
+}
+
+Enum delivery_status {
+  AWAITING_PAYMENT
+  FINDING_RUNNER
+  RUNNER_ASSIGNED
+  AT_PICKUP
+  IN_TRANSIT
+  AWAITING_HANDOFF_PAYMENT
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+Enum pay_link_status {
+  ACTIVE
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+Enum assignment_status {
+  OPEN
+  CLAIMED
+  PICKED_UP
+  COMPLETED
+  CANCELLED
+}
+
+Enum payment_provider {
+  MOCK_MOMO
+  PAYSTACK_MOMO
+}
+
+Enum payment_purpose {
+  DELIVERY_FEE
+  HANDOFF_DELIVERY_FEE
+  VENDOR_WALLET_TOPUP
+  RUNNER_COMMISSION_TOPUP
+}
+
+Enum payment_intent_status {
+  INITIALIZED
+  PENDING_APPROVAL
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+Enum ledger_account_type {
+  PLATFORM_CLEARING
+  ESCROW_LIABILITY
+  PLATFORM_REVENUE
+  RUNNER_WALLET
+  VENDOR_DELIVERY_WALLET
+}
+
+Enum ledger_tx_type {
+  DELIVERY_COLLECTION
+  WALLET_TOPUP
+  WALLET_RESERVE
+  TWO_WAY_SPLIT
+  CASH_COMMISSION_DEBIT
+  RUNNER_COMMISSION_TOPUP
+  RUNNER_PAYOUT
+  REFUND
+}
+
+Enum entry_direction {
+  DEBIT
+  CREDIT
+}
+
+Enum payout_status {
+  PENDING
+  PROCESSING
+  SETTLED
+  FAILED
+}
+
+// ==========================================
+// 1. IDENTITY MODULE (Schema: identity)
+// ==========================================
+
+Table identity.users {
+  id uuid [pk]
+  campus_id uuid [not null, note: 'Logical ref -> campus.campuses.id']
+  email varchar(255) [not null, unique]
+  phone varchar(20) [not null, unique, note: 'Normalized Ghana MSISDN e.g. 23324XXXXXXX']
+  password_hash varchar(255) [not null]
+  full_name varchar(150) [not null]
+  student_id_number varchar(64) [unique]
+  business_name varchar(150) [note: 'Optional label for VENDOR_PARTNER accounts']
+  momo_provider momo_provider
+  momo_number varchar(20)
+  paystack_recipient_code varchar(100) [note: 'Paystack RCP_xxx for instant Runner MoMo payouts']
+  no_show_count integer [not null, default: 0, note: '>= 2 restricts user to MOMO_PREPAID only']
+  allow_postpaid boolean [not null, default: true, note: 'Controls eligibility for Pay-After-Delivery & Cash']
+  is_verified boolean [not null, default: false]
+  is_active boolean [not null, default: true]
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    campus_id
+  }
+}
+
+Table identity.user_roles {
+  user_id uuid [not null]
+  role user_role [not null]
+  granted_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (user_id, role) [pk]
+  }
+}
+
+Table identity.refresh_tokens {
+  id uuid [pk]
+  user_id uuid [not null]
+  token_hash varchar(255) [not null, unique]
+  expires_at timestamp [not null]
+  revoked boolean [not null, default: false]
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    user_id
+  }
+}
+
+// ==========================================
+// 2. CAMPUS & GEOSPATIAL MODULE (Schema: campus)
+// ==========================================
+
+Table campus.campuses {
+  id uuid [pk]
+  code varchar(32) [not null, unique, note: 'e.g. UG_LEGON, KNUST']
+  name varchar(150) [not null]
+  currency varchar(3) [not null, default: 'GHS']
+  center_lat decimal(9,6) [not null]
+  center_lng decimal(9,6) [not null]
+  boundary_polygon "geometry(Polygon,4326)" [not null, note: 'PostGIS campus-only geofence']
+  platform_cut_bps integer [not null, default: 1500, note: 'Basis points: 1500 = 15% Digiyak cut, 85% Runner']
+  runner_cash_credit_limit_pesewas bigint [not null, default: 1000, note: 'Max -GHS 10.00 cash commission owed before cash runs pause']
+  is_active boolean [not null, default: true]
+  created_at timestamp [not null, default: `now()`]
+}
+
+Table campus.campus_zones {
+  id uuid [pk]
+  campus_id uuid [not null]
+  name varchar(120) [not null, note: 'e.g. Night Market, North Hostels, Central Lecture Area']
+  zone_polygon "geometry(Polygon,4326)"
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (campus_id, name) [unique]
+  }
+}
+
+Table campus.campus_landmarks {
+  id uuid [pk]
+  campus_id uuid [not null]
+  zone_id uuid [not null]
+  name varchar(150) [not null, note: 'e.g. Commonwealth Hall, Bush Canteen, Main Gate']
+  landmark_type landmark_type [not null]
+  lat decimal(9,6) [not null]
+  lng decimal(9,6) [not null]
+  geo_point "geometry(Point,4326)" [not null]
+  instructions_hint text
+  is_active boolean [not null, default: true]
+
+  indexes {
+    campus_id
+    zone_id
+    landmark_type
+  }
+}
+
+Table campus.zone_fee_rules {
+  id uuid [pk]
+  campus_id uuid [not null]
+  from_zone_id uuid [not null]
+  to_zone_id uuid [not null]
+  delivery_fee_pesewas bigint [not null, note: 'e.g. 800 = GHS 8.00']
+  estimated_walk_minutes integer [not null]
+  is_active boolean [not null, default: true]
+
+  indexes {
+    (campus_id, from_zone_id, to_zone_id) [unique]
+  }
+}
+
+// ==========================================
+// 3. DELIVERY REQUESTS MODULE (Schema: delivery)
+// ==========================================
+
+Table delivery.delivery_requests {
+  id uuid [pk]
+  tracking_code varchar(32) [not null, unique, note: 'Human-readable e.g. DYK-84920']
+  campus_id uuid [not null, note: 'Logical ref -> campus.campuses.id']
+  requester_user_id uuid [not null, note: 'Student or Vendor Partner who created the request']
+  source delivery_source [not null]
+  package_category package_category [not null]
+  package_description varchar(255) [not null, note: 'e.g. 1 pack Jollof prepaid under Ama, or MacBook charger']
+
+  pickup_landmark_id uuid [note: 'Logical ref -> campus.campus_landmarks.id']
+  pickup_zone_id uuid [not null, note: 'Logical ref -> campus.campus_zones.id']
+  pickup_label varchar(200) [not null]
+  pickup_lat decimal(9,6) [not null]
+  pickup_lng decimal(9,6) [not null]
+  pickup_contact_name varchar(120) [not null]
+  pickup_contact_phone varchar(20) [not null]
+  pickup_notes varchar(255)
+
+  dropoff_landmark_id uuid [note: 'Logical ref -> campus.campus_landmarks.id']
+  dropoff_zone_id uuid [not null, note: 'Logical ref -> campus.campus_zones.id']
+  dropoff_label varchar(200) [not null]
+  dropoff_lat decimal(9,6) [not null]
+  dropoff_lng decimal(9,6) [not null]
+  recipient_name varchar(120) [not null]
+  recipient_phone varchar(20) [not null]
+  room_notes varchar(255) [note: 'e.g. Room B14, 2nd Floor / Hostel Main Gate']
+
+  payment_method payment_method [not null, default: 'MOMO_PREPAID']
+  payment_timing payment_timing [not null, default: 'PREPAID']
+  cash_collection_status cash_collection_status [not null, default: 'NOT_APPLICABLE']
+  cash_confirmed_at timestamp
+  delivery_fee_pesewas bigint [not null, note: 'Total delivery fee (100%)']
+  runner_payout_pesewas bigint [not null, note: 'e.g. 85% of delivery fee']
+  platform_cut_pesewas bigint [not null, note: 'e.g. 15% Digiyak automated cut']
+
+  pickup_code varchar(6) [not null, note: '4-digit code verified at pickup']
+  delivery_pin varchar(6) [not null, note: '4-digit PIN recipient gives Runner to unlock settlement']
+  pickup_photo_url varchar(500)
+  dropoff_photo_url varchar(500)
+
+  status delivery_status [not null, default: 'AWAITING_PAYMENT']
+  idempotency_key varchar(128) [not null, unique]
+  version bigint [not null, default: 0, note: 'Optimistic locking']
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp [not null, default: `now()`]
+
+  indexes {
+    requester_user_id
+    (campus_id, status)
+    (campus_id, payment_method, status)
+    recipient_phone
+  }
+}
+
+Table delivery.payment_links {
+  id uuid [pk]
+  delivery_request_id uuid [not null, unique]
+  short_code varchar(24) [not null, unique, note: 'Used for WhatsApp prepay or Pay-After-Delivery handoff QR/link']
+  payer_phone varchar(20)
+  amount_pesewas bigint [not null]
+  status pay_link_status [not null, default: 'ACTIVE']
+  expires_at timestamp [not null]
+  paid_at timestamp
+  created_at timestamp [not null, default: `now()`]
+}
+
+Table delivery.delivery_status_history {
+  id uuid [pk]
+  delivery_request_id uuid [not null]
+  from_status delivery_status
+  to_status delivery_status [not null]
+  changed_by_user_id uuid [note: 'Logical ref -> identity.users.id']
+  reason varchar(255)
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    delivery_request_id
+  }
+}
+
+// ==========================================
+// 4. DISPATCH & LIVE MAP MODULE (Schema: dispatch)
+// ==========================================
+
+Table dispatch.runner_profiles {
+  user_id uuid [pk, note: 'Logical ref -> identity.users.id']
+  campus_id uuid [not null, note: 'Logical ref -> campus.campuses.id']
+  is_online boolean [not null, default: false]
+  accepts_cash_runs boolean [not null, default: true]
+  cash_runs_suspended boolean [not null, default: false, note: 'True when cash commission owed exceeds campus credit limit']
+  completed_runs_count integer [not null, default: 0]
+  rating_avg decimal(3,2) [not null, default: 5.00]
+  last_heartbeat_at timestamp [note: 'Live lat/lng stored in Redis GEO, not Postgres']
+}
+
+Table dispatch.delivery_assignments {
+  id uuid [pk]
+  delivery_request_id uuid [not null, unique, note: 'Logical ref -> delivery.delivery_requests.id']
+  campus_id uuid [not null, note: 'Logical ref -> campus.campuses.id']
+  runner_user_id uuid [note: 'Assigned student runner -> dispatch.runner_profiles.user_id']
+  payment_method payment_method [not null, note: 'Denormalized so gig board shows MoMo / Pay-After / Cash badge']
+  pickup_lat decimal(9,6) [not null]
+  pickup_lng decimal(9,6) [not null]
+  dropoff_lat decimal(9,6) [not null]
+  dropoff_lng decimal(9,6) [not null]
+  pickup_label varchar(200) [not null]
+  dropoff_label varchar(200) [not null]
+  distance_meters integer [not null]
+  estimated_walk_minutes integer [not null]
+  runner_payout_pesewas bigint [not null]
+  status assignment_status [not null, default: 'OPEN']
+  version bigint [not null, default: 0, note: 'Atomic lock preventing runner double-claims']
+  claimed_at timestamp
+  picked_up_at timestamp
+  completed_at timestamp
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (campus_id, status, payment_method)
+    runner_user_id
+  }
+}
+
+Table dispatch.delivery_trail_points {
+  id uuid [pk]
+  assignment_id uuid [not null]
+  lat decimal(9,6) [not null]
+  lng decimal(9,6) [not null]
+  geo_point "geometry(Point,4326)" [not null]
+  recorded_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (assignment_id, recorded_at)
+  }
+}
+
+// ==========================================
+// 5. FINANCE & 2-WAY SPLIT LEDGER (Schema: finance)
+// ==========================================
+
+Table finance.payment_intents {
+  id uuid [pk]
+  delivery_request_id uuid [note: 'Null for VENDOR_WALLET_TOPUP or RUNNER_COMMISSION_TOPUP']
+  payer_user_id uuid [note: 'Nullable for guest WhatsApp payment-link payers']
+  purpose payment_purpose [not null]
+  provider payment_provider [not null]
+  provider_reference varchar(128) [not null, unique]
+  momo_provider momo_provider
+  momo_number varchar(20)
+  amount_pesewas bigint [not null]
+  currency varchar(3) [not null, default: 'GHS']
+  status payment_intent_status [not null, default: 'INITIALIZED']
+  idempotency_key varchar(128) [not null, unique]
+  raw_webhook_payload jsonb
+  paid_at timestamp
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    delivery_request_id
+    payer_user_id
+    status
+  }
+}
+
+Table finance.ledger_accounts {
+  id uuid [pk]
+  code varchar(100) [not null, unique, note: 'e.g. ESCROW_LIABILITY, RUNNER_WALLET:{uuid}, VENDOR_DELIVERY_WALLET:{uuid}']
+  account_type ledger_account_type [not null]
+  owner_user_id uuid [note: 'Null for platform system accounts; logical ref -> identity.users.id']
+  currency varchar(3) [not null, default: 'GHS']
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    owner_user_id
+    account_type
+  }
+}
+
+Table finance.ledger_transactions {
+  id uuid [pk]
+  reference varchar(100) [not null, unique]
+  idempotency_key varchar(128) [not null, unique]
+  delivery_request_id uuid [note: 'Logical ref -> delivery.delivery_requests.id']
+  tx_type ledger_tx_type [not null]
+  description varchar(255)
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    delivery_request_id
+    tx_type
+  }
+}
+
+Table finance.ledger_entries {
+  id uuid [pk]
+  transaction_id uuid [not null]
+  account_id uuid [not null]
+  direction entry_direction [not null]
+  amount_pesewas bigint [not null, note: 'Always positive; SUM(DEBIT) == SUM(CREDIT) per transaction']
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    transaction_id
+    account_id
+  }
+}
+
+Table finance.payouts {
+  id uuid [pk]
+  delivery_request_id uuid [not null, note: 'Logical ref -> delivery.delivery_requests.id']
+  ledger_transaction_id uuid [not null]
+  runner_user_id uuid [not null, note: 'Logical ref -> identity.users.id']
+  gross_amount_pesewas bigint [not null, note: 'Runner earned share before cash commission offset']
+  commission_offset_pesewas bigint [not null, default: 0, note: 'Prior unpaid cash commission auto-deducted']
+  net_amount_pesewas bigint [not null, note: 'Actual MoMo transfer sent to Runner']
+  currency varchar(3) [not null, default: 'GHS']
+  momo_provider momo_provider [not null]
+  momo_number varchar(20) [not null]
+  provider_transfer_code varchar(128) [unique]
+  status payout_status [not null, default: 'PENDING']
+  idempotency_key varchar(128) [not null, unique]
+  failure_reason text
+  settled_at timestamp
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    delivery_request_id
+    runner_user_id
+    status
+  }
+}
+
+// ==========================================
+// 6. SPRING MODULITH OUTBOX (Schema: modulith)
+// ==========================================
+
+Table modulith.event_publication {
+  id uuid [pk]
+  listener_id varchar(255) [not null]
+  event_type varchar(255) [not null]
+  serialized_event text [not null]
+  publication_date timestamp [not null]
+  completion_date timestamp
+
+  indexes {
+    completion_date
+  }
+}
+
+// ==========================================
+// VISUAL MODULE GROUPING
+// ==========================================
+
+TableGroup identity_module {
+  identity.users
+  identity.user_roles
+  identity.refresh_tokens
+}
+
+TableGroup campus_module {
+  campus.campuses
+  campus.campus_zones
+  campus.campus_landmarks
+  campus.zone_fee_rules
+}
+
+TableGroup delivery_module {
+  delivery.delivery_requests
+  delivery.payment_links
+  delivery.delivery_status_history
+}
+
+TableGroup dispatch_module {
+  dispatch.runner_profiles
+  dispatch.delivery_assignments
+  dispatch.delivery_trail_points
+}
+
+TableGroup finance_module {
+  finance.payment_intents
+  finance.ledger_accounts
+  finance.ledger_transactions
+  finance.ledger_entries
+  finance.payouts
+}
+
+TableGroup outbox_infra {
+  modulith.event_publication
+}
+
+// ==========================================
+// RELATIONSHIPS — HARD INTRA-MODULE FKs
+// ==========================================
+
+Ref: identity.user_roles.user_id > identity.users.id [delete: cascade]
+Ref: identity.refresh_tokens.user_id > identity.users.id [delete: cascade]
+
+Ref: campus.campus_zones.campus_id > campus.campuses.id
+Ref: campus.campus_landmarks.campus_id > campus.campuses.id
+Ref: campus.campus_landmarks.zone_id > campus.campus_zones.id
+Ref: campus.zone_fee_rules.campus_id > campus.campuses.id
+Ref: campus.zone_fee_rules.from_zone_id > campus.campus_zones.id
+Ref: campus.zone_fee_rules.to_zone_id > campus.campus_zones.id
+
+Ref: delivery.payment_links.delivery_request_id - delivery.delivery_requests.id [delete: cascade]
+Ref: delivery.delivery_status_history.delivery_request_id > delivery.delivery_requests.id [delete: cascade]
+
+Ref: dispatch.delivery_assignments.runner_user_id > dispatch.runner_profiles.user_id
+Ref: dispatch.delivery_trail_points.assignment_id > dispatch.delivery_assignments.id [delete: cascade]
+
+Ref: finance.ledger_entries.transaction_id > finance.ledger_transactions.id
+Ref: finance.ledger_entries.account_id > finance.ledger_accounts.id
+Ref: finance.payouts.ledger_transaction_id > finance.ledger_transactions.id
+
+// ==========================================
+// RELATIONSHIPS — LOGICAL CROSS-MODULE REFS
+// ==========================================
+
+Ref: identity.users.campus_id > campus.campuses.id
+
+Ref: delivery.delivery_requests.campus_id > campus.campuses.id
+Ref: delivery.delivery_requests.requester_user_id > identity.users.id
+Ref: delivery.delivery_requests.pickup_landmark_id > campus.campus_landmarks.id
+Ref: delivery.delivery_requests.pickup_zone_id > campus.campus_zones.id
+Ref: delivery.delivery_requests.dropoff_landmark_id > campus.campus_landmarks.id
+Ref: delivery.delivery_requests.dropoff_zone_id > campus.campus_zones.id
+Ref: delivery.delivery_status_history.changed_by_user_id > identity.users.id
+
+Ref: dispatch.runner_profiles.user_id - identity.users.id
+Ref: dispatch.runner_profiles.campus_id > campus.campuses.id
+Ref: dispatch.delivery_assignments.delivery_request_id - delivery.delivery_requests.id
+Ref: dispatch.delivery_assignments.campus_id > campus.campuses.id
+
+Ref: finance.payment_intents.delivery_request_id > delivery.delivery_requests.id
+Ref: finance.payment_intents.payer_user_id > identity.users.id
+Ref: finance.ledger_accounts.owner_user_id > identity.users.id
+Ref: finance.ledger_transactions.delivery_request_id > delivery.delivery_requests.id
+Ref: finance.payouts.delivery_request_id > delivery.delivery_requests.id
+Ref: finance.payouts.runner_user_id > identity.users.id

@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    container_name: digiyak-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-digiyak}
+      POSTGRES_USER: ${POSTGRES_USER:-digiyak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-digiyak_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - digiyak_pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init-extensions.sql:/docker-entrypoint-initdb.d/01-init-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-digiyak} -d ${POSTGRES_DB:-digiyak}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: digiyak-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - digiyak_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  digiyak_pgdata:
+  digiyak_redisdata:
