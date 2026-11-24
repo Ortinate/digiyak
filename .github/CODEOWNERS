@@ -54,8 +54,9 @@
 /frontend/src/app/runner/                                   @member-12 @member-9
 /frontend/src/features/runner-console/                      @member-12 @member-9
 
-# Member 13 — Admin Campus Ops & Ledger Audit UI
+# Member 13 — Admin & Super Admin Ops UI
 /frontend/src/app/admin/                                    @member-13 @member-9
+/frontend/src/app/super-admin/                              @member-13 @member-9
 /frontend/src/features/admin-ops/                           @member-13 @member-9
 
 # Member 14 — DevOps, Docker, CI/CD & Base DB

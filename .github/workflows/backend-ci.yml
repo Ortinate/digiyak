@@ -26,10 +26,8 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - name: Set up Gradle
+      - name: Setup Gradle cache
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.0.0"
 
       - name: Compile & Run Tests (including Spring Modulith verification)
-        run: gradle test --no-daemon
+        run: ./gradlew test --no-daemon

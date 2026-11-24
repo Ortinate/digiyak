@@ -20,7 +20,8 @@ Enum user_role {
   CUSTOMER
   VENDOR_PARTNER
   RUNNER
-  ADMIN
+  CAMPUS_ADMIN
+  SUPER_ADMIN
 }
 
 Enum momo_provider {
@@ -157,7 +158,7 @@ Enum payout_status {
 
 Table identity.users {
   id uuid [pk]
-  campus_id uuid [not null, note: 'Logical ref -> campus.campuses.id']
+  campus_id uuid [note: 'Null for global SUPER_ADMIN; logical ref -> campus.campuses.id']
   email varchar(255) [not null, unique]
   phone varchar(20) [not null, unique, note: 'Normalized Ghana MSISDN e.g. 23324XXXXXXX']
   password_hash varchar(255) [not null]
@@ -199,6 +200,25 @@ Table identity.refresh_tokens {
 
   indexes {
     user_id
+  }
+}
+
+Table identity.admin_audit_logs {
+  id uuid [pk]
+  actor_user_id uuid [not null, note: 'SUPER_ADMIN or CAMPUS_ADMIN who performed the action']
+  actor_role user_role [not null]
+  target_campus_id uuid [note: 'Null for platform-wide actions; logical ref -> campus.campuses.id']
+  action varchar(100) [not null, note: 'e.g. CREATE_CAMPUS, UPDATE_PLATFORM_FEE, GRANT_CAMPUS_ADMIN, SUSPEND_USER']
+  target_entity_type varchar(80) [not null]
+  target_entity_id uuid
+  metadata_json jsonb
+  ip_address varchar(64)
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    actor_user_id
+    (target_campus_id, created_at)
+    action
   }
 }
 
@@ -526,6 +546,7 @@ TableGroup identity_module {
   identity.users
   identity.user_roles
   identity.refresh_tokens
+  identity.admin_audit_logs
 }
 
 TableGroup campus_module {
@@ -565,6 +586,7 @@ TableGroup outbox_infra {
 
 Ref: identity.user_roles.user_id > identity.users.id [delete: cascade]
 Ref: identity.refresh_tokens.user_id > identity.users.id [delete: cascade]
+Ref: identity.admin_audit_logs.actor_user_id > identity.users.id
 
 Ref: campus.campus_zones.campus_id > campus.campuses.id
 Ref: campus.campus_landmarks.campus_id > campus.campuses.id
@@ -588,6 +610,7 @@ Ref: finance.payouts.ledger_transaction_id > finance.ledger_transactions.id
 // ==========================================
 
 Ref: identity.users.campus_id > campus.campuses.id
+Ref: identity.admin_audit_logs.target_campus_id > campus.campuses.id
 
 Ref: delivery.delivery_requests.campus_id > campus.campuses.id
 Ref: delivery.delivery_requests.requester_user_id > identity.users.id
