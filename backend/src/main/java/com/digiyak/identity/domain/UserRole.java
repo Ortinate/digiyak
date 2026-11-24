@@ -1,5 +1,9 @@
 package com.digiyak.identity.domain;
 
-// Clean skeleton class — implement per docs/team-15-members.md.
-public class UserRole {
+public enum UserRole {
+    CUSTOMER,
+    VENDOR_PARTNER,
+    RUNNER,
+    CAMPUS_ADMIN,
+    SUPER_ADMIN
 }

@@ -1,5 +1,20 @@
 package com.digiyak.identity.internal;
 
-// Clean skeleton interface — implement per docs/team-15-members.md.
-public interface UserRepository {
+import com.digiyak.identity.domain.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+import java.util.UUID;
+
+public interface UserRepository extends JpaRepository<User, UUID> {
+
+    Optional<User> findByEmailIgnoreCase(String email);
+
+    Optional<User> findByPhone(String phone);
+
+    boolean existsByEmailIgnoreCase(String email);
+
+    boolean existsByPhone(String phone);
+
+    boolean existsByStudentIdNumber(String studentIdNumber);
 }
