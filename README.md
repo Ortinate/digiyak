@@ -155,7 +155,89 @@ pnpm build       # Production Next.js build check
 
 ---
 
-## Team Documentation (15-Member Workflow)
+## Team Workflow (15 Members)
+
+Digiyak is built by a 15-person team working in parallel. Each member owns one slice of the codebase, so most PRs touch only your own folder and merge conflicts stay rare.
+
+### Who Owns What
+
+| # | Area | Folder |
+| :-: | :--- | :--- |
+| 1 | Platform Lead & Shared Kernel | `backend/src/main/java/com/digiyak/shared/`, Gradle & app config |
+| 2 | Identity & Auth | `backend/.../identity/` |
+| 3 | Campus, PostGIS & Pricing | `backend/.../campus/` |
+| 4 | Delivery Requests & Pay Links | `backend/.../delivery/` |
+| 5 | Dispatch & Runner Assignment | `backend/.../dispatch/assignment/` |
+| 6 | Live Tracking (Redis GEO & SSE) | `backend/.../dispatch/realtime/` |
+| 7 | Finance Ledger & Cash Float | `backend/.../finance/ledger/` |
+| 8 | MoMo Gateway & Payouts | `backend/.../finance/gateway/` |
+| 9 | Frontend Core, PWA & Campus Map | `frontend/src/components/`, `frontend/src/lib/` |
+| 10 | Requester & Live Tracking UI | `frontend/src/app/page.tsx`, `app/track/`, `features/request-delivery/`, `features/live-tracking/` |
+| 11 | Vendor Dispatch & Pay Link UI | `frontend/src/app/vendor/`, `app/pay/`, `features/vendor-dispatch/` |
+| 12 | Runner Console UI | `frontend/src/app/runner/`, `features/runner-console/` |
+| 13 | Admin & Super Admin UI | `frontend/src/app/admin/`, `app/super-admin/`, `features/admin-ops/` |
+| 14 | DevOps, Docker, CI & Seed Data | `docker-compose.yml`, `infra/`, `.github/`, `V1__` & `V7__` migrations |
+| 15 | QA, Tests & Docs | `backend/src/test/`, `frontend/tests/`, `docs/` |
+
+Full responsibilities are in [docs/team-15-members.md](docs/team-15-members.md). Reviewers are assigned automatically from [.github/CODEOWNERS](.github/CODEOWNERS).
+
+### Daily Flow
+
+1. **Start from the latest `main`:**
+   ```bash
+   git checkout main
+   git pull origin main
+   ```
+2. **Create a branch** named `<type>/m<your-number>-<short-description>`:
+   ```bash
+   git checkout -b feat/m4-whatsapp-pay-links
+   ```
+   Types: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`.
+3. **Work inside your own folder.** If you need something from another module, call its public API (for example `IdentityModuleApi` or `DeliveryModuleApi`) or listen to its events. Never import another module's `internal` package.
+4. **Commit with Conventional Commits:**
+   ```bash
+   git commit -m "feat(delivery): add payment link expiry check"
+   ```
+5. **Run the checks locally before pushing** (CI runs the same ones):
+   ```bash
+   # Backend
+   cd backend && ./gradlew clean check        # Windows: .\gradlew.bat clean check
+
+   # Frontend
+   cd frontend && pnpm lint && pnpm typecheck && pnpm build
+   ```
+6. **Push your branch:**
+   ```bash
+   git push -u origin feat/m4-whatsapp-pay-links
+   ```
+
+### Opening a Pull Request
+
+1. Go to https://github.com/Ortinate/digiyak/pulls and click **New pull request**, or open the "Compare & pull request" banner GitHub shows after you push.
+2. Set **base: `main`** and **compare: your branch**.
+3. Fill in the PR template: your member number, the module, what changed, and tick the checklist.
+4. Keep PRs small and focused on one feature or fix. Large PRs are slow to review.
+5. Wait for **green CI** (Backend CI and/or Frontend CI) and **one approval** from a CODEOWNER (the Platform Lead for backend, Member 9 for frontend).
+6. Address review comments with new commits on the same branch. Don't force-push once review has started.
+7. Merge with **Squash and merge**, then delete the branch.
+
+### Rules That CI Enforces
+
+- `ModularityTests` fails the build if a module reaches into another module's `internal` package.
+- Java compiles with `-Xlint:all -Werror`, so any compiler warning breaks the build.
+- Frontend must pass ESLint, TypeScript strict mode, and a production build.
+
+### Team Rules
+
+- Never push directly to `main`.
+- Never edit a Flyway migration that's already merged. Add a new one instead.
+- Money is always integer pesewas (`Money`), never `float` or `double`.
+- No SQL `JOIN`s across schemas (`identity`, `campus`, `delivery`, `dispatch`, `finance`).
+- Ask in the team channel before changing anything outside your folder.
+
+More detail: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Team Documentation
 - [15-Member Ownership & Workstreams](docs/team-15-members.md)
 - [Database Schema (DBML for dbdiagram.io)](docs/schema.dbml)
 - [Architecture Overview](docs/architecture.md)
